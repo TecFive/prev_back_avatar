@@ -1,0 +1,1 @@
+Backend creado para previa implementacion en backend principal en Azure por Jose Oliva
