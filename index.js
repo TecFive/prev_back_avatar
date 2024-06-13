@@ -12,7 +12,7 @@ const openai = new OpenAI({
 });
 
 const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
-const voiceID = "gD1IexrzCvsXPHUuT0s3";
+const voiceID = "gxSxrhNNXvdHpOH0EHjV";
 
 const app = express();
 app.use(express.json());
@@ -46,27 +46,131 @@ const lipSyncMessage = async (message) => {
   );
 };
 
+function numeroAPalabras(numero) {
+  const unidades = ["", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve"];
+  const decenas = ["", "", "veinte", "treinta"];
+  
+  if (numero < 20) {
+    return unidades[numero];
+  } else if (numero < 100) {
+    let unidad = numero % 10;
+    let decena = Math.floor(numero / 10);
+    return decenas[decena] + (unidad > 0 ? " y " + unidades[unidad] : "");
+  } else {
+    return numero.toString();
+  }
+}
+
 app.post("/chat", async (req, res) => {
   let userMessage = req.body.message;
+  let previousMessage = userMessage;
 
-  if (userMessage === "iniciar reservacion") {
-    userMessage = "Di tu nombre y preguntame '¿Que día quieres reservar un laboratorio?";
-  }
+  console.log(`User message: ${userMessage}`);
 
-  const dateRegex = /^(0[1-9]|[12][0-9]|3[01])\/(0[1-9]|1[012])\/(19|20)\d\d$/;
+  const timeRangeRegex = /^([01]?[0-9]|2[0-3]):(00|30)\s*-\s*([01]?[0-9]|2[0-3]):(00|30)$/;
 
-  if (dateRegex.test(userMessage)) {
-    userMessage = "Pregunta solamente '¿Qué laboratorio quieres reservar?'";
-  }
-
-  if (userMessage === "Laboratorio Lego Room" || userMessage === "Laboratorio VR Room" || userMessage === "Laboratorio PC Room" || userMessage === "Laboratorio Meeting Room" || userMessage === "Laboratorio Electric Garage" || userMessage === "Laboratorio PCB Factory") {
-    userMessage = "Pregunta solamente '¿A qué hora quieres que inicie tu reservación y por cuánto tiempo?'";
-  }
-
-  const timeRangeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]\s*-\s*([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+  const numbersToWords = {
+    '00': '',
+    '01': 'una',
+    '02': 'dos',
+    '03': 'tres',
+    '04': 'cuatro',
+    '05': 'cinco',
+    '06': 'seis',
+    '07': 'siete',
+    '08': 'ocho',
+    '09': 'nueve',
+    '10': 'diez',
+    '11': 'once',
+    '12': 'doce',
+    '13': 'una',
+    '14': 'dos',
+    '15': 'tres',
+    '16': 'cuatro',
+    '17': 'cinco',
+    '18': 'seis',
+    '19': 'siete',
+    '20': 'ocho',
+    '21': 'nueve',
+    '22': 'diez',
+    '23': 'once',
+    '30': 'y media'
+  };
 
   if (timeRangeRegex.test(userMessage)) {
-    userMessage = "Pregunta solamente '¿Qué equipos te gustaría reservar?'";
+    let [start, end] = userMessage.split('-').map(time => time.trim());
+    let [startHour, startMinute] = start.split(':');
+    let [endHour, endMinute] = end.split(':');
+
+    let startPeriod = startHour >= 12 ? 'de la tarde' : 'de la mañana';
+    let endPeriod = endHour >= 12 ? 'de la tarde' : 'de la mañana';
+
+    startHour = startHour % 12 || 12;
+    endHour = endHour % 12 || 12;
+
+    let startHourInWords = numbersToWords[String(startHour).padStart(2, '0')] || '';
+    let startMinuteInWords = numbersToWords[startMinute] || '';
+    let endHourInWords = numbersToWords[String(endHour).padStart(2, '0')] || '';
+    let endMinuteInWords = numbersToWords[endMinute] || '';
+
+    userMessage = `Di unicamente lo siguiente "Será en el horario de las ${startHourInWords} ${startMinuteInWords} ${startPeriod} hasta las ${endHourInWords} ${endMinuteInWords} ${endPeriod} ¿Qué equipos te gustaría reservar?"`;
+  }
+
+  const dateRegex = /^([0-2]?[0-9]|3[01])\/([0-1]?[0-9])\/(19|20)\d\d$/;
+
+  if (dateRegex.test(userMessage)) {
+    const dateParts = userMessage.split("/");
+    const dateObject = new Date(+dateParts[2], dateParts[1] - 1, +dateParts[0]);
+
+    const dias = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+    const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+    const fechaFormateada = `${dias[dateObject.getDay()]}, ${numeroAPalabras(dateObject.getDate())} de ${meses[dateObject.getMonth()]}`;
+
+    userMessage = `Di unicamente lo siguiente "Será el ${fechaFormateada}, ¿Qué laboratorio te gustaría reservar?"`;
+  }
+
+  const equipmentRegex = /(\d+)\s(\w+)(\s-\s)?/g;
+  let match;
+  let equipos = [];
+
+  while ((match = equipmentRegex.exec(userMessage)) !== null) {
+    const numero = numeroAPalabras(+match[1]);
+    const equipo = traducirEquipo(match[2]);
+    equipos.push(`${numero} ${equipo}`);
+  }
+
+  if (equipos.length > 0) {
+    const equiposFormateados = equipos.join(" y ");
+    userMessage = `Di unicamente lo siguiente "Los equipos seleccionados fueron ${equiposFormateados}, Para completar tu reservación apoyame dando clck en el boton Reservar"`;
+  }
+
+  function traducirEquipo(equipo) {
+    switch (equipo.toLowerCase()) {
+      case 'projector':
+        return 'proyectores';
+      case 'whiteboard':
+        return 'pizarrones';
+      case 'lego':
+        return 'legos';
+      case 'vr':
+        return 'lentes';
+      case 'pc':
+        return 'computadoras';
+      default:
+        return equipo;
+    }
+  }
+
+  if (userMessage === "iniciar reservacion") {
+    userMessage = "Di unicamente lo siguiente 'Bienvenido Jose Oliva ¿Que día te gustaria reservar un laboratorio?";
+  }
+
+  if (userMessage === "reservacion creada") {
+    userMessage = "Di unicamente lo siguiente 'Tu reservacion fue creada con exito, te esperamos el dia de la reservacion'";
+  }
+
+  if (userMessage === "Laboratorio Lego Room" || userMessage === "Laboratorio VR Room" || userMessage === "Laboratorio PC Room" || userMessage === "Laboratorio Meeting Room" || userMessage === "Laboratorio Electric Garage" || userMessage === "Laboratorio PCB Factory" || userMessage === "Laboratorio New Horizons" || userMessage === "Laboratorio Graveyard" || userMessage === "Laboratorio Dimension Forge") {
+    userMessage = `Di unicamente lo siguiente "Será en el ${previousMessage} ¿En que horario te gustaria reservar?"`;
   }
 
   const completion = await openai.chat.completions.create({
